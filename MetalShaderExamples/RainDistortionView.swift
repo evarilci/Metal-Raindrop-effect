@@ -34,28 +34,28 @@ public struct RainDistortionView<Content: View>: View {
                                     )
                             }
                 // --- NEW: Dynamic Glass Glare Overlay ---
-                .overlay(
-                    LinearGradient(
-                        colors: [
-                            .clear,
-                            .white.opacity(0.1),
-                            .white.opacity(0.3),
-                            .white.opacity(0.1),
-                            .clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    // Scale it up significantly so we don't see the edges when it sweeps
-                    .scaleEffect(2.5)
-                    // Move the glare opposite to the device tilt for a realistic reflection
-                    .offset(
-                        x: CGFloat(-motionX * 250),
-                        y: CGFloat(-motionY * 250)
-                    )
-                    .blendMode(.screen)
-                    .allowsHitTesting(false) // Ensures the glare doesn't block interactions
-                )
+//                .overlay(
+//                    LinearGradient(
+//                        colors: [
+//                            .clear,
+//                            .white.opacity(0.1),
+//                            .white.opacity(0.3),
+//                            .white.opacity(0.1),
+//                            .clear
+//                        ],
+//                        startPoint: .topLeading,
+//                        endPoint: .bottomTrailing
+//                    )
+//                    // Scale it up significantly so we don't see the edges when it sweeps
+//                    .scaleEffect(2.5)
+//                    // Move the glare opposite to the device tilt for a realistic reflection
+//                    .offset(
+//                        x: CGFloat(-motionX * 250),
+//                        y: CGFloat(-motionY * 250)
+//                    )
+//                    .blendMode(.screen)
+//                    .allowsHitTesting(false) // Ensures the glare doesn't block interactions
+//                )
         }
     }
 }
