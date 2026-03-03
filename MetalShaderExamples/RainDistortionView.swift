@@ -22,16 +22,17 @@ public struct RainDistortionView<Content: View>: View {
             let elapsedTime = timeline.date.timeIntervalSince(startDate)
             
             content
-                .visualEffect { content, proxy in
-                    content
-                        .layerEffect(
-                            ShaderLibrary.rainDistortion(
-                                .float2(proxy.size),
-                                .float(Float(elapsedTime))
-                            ),
-                            maxSampleOffset: CGSize(width: 150, height: 150)
-                        )
-                }
+                    .visualEffect { content, proxy in
+                                content
+                                    .layerEffect(
+                                        ShaderLibrary.rainDistortion(
+                                            .float2(proxy.size),
+                                            // Send Time, X Tilt, and Y Tilt as a single float3 vector
+                                            .float3(Float(elapsedTime), Float(motionX), Float(motionY))
+                                        ),
+                                        maxSampleOffset: CGSize(width: 150, height: 150)
+                                    )
+                            }
                 // --- NEW: Dynamic Glass Glare Overlay ---
                 .overlay(
                     LinearGradient(

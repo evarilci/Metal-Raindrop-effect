@@ -15,31 +15,22 @@ float hash21(float2 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
-// Stores the physically calculated geometry of the droplet
 struct Drop {
     float3 normal;
     float mask;
 };
 
-// Generates spring rain droplets randomly splashing onto the lens
 Drop splashDrops(float2 uv, float time, float scale) {
     float2 id = floor(uv * scale);
     float2 st = fract(uv * scale) - 0.5;
     
-    // Random offset per cell so drops don't spawn together
     float timeOffset = hash21(id) * 100.0;
-    
-    // Slow down the total lifecycle of a single cell to multi-second intervals
-    // E.g., a drop might spawn only once every 4-8 seconds within a specific grid cell
-    float localTime = (time + timeOffset) * 0.15; 
+    float localTime = (time + timeOffset) * 0.15;
     float cycle = floor(localTime);
-    float t = fract(localTime); // 0.0 to 1.0 representing one full lifecycle in a cell
+    float t = fract(localTime);
     
-    // Re-randomize properties per cycle so the same drop doesn't keep appearing
     float3 rand = hash13(id.x * 123.4 + id.y * 567.8 + cycle * 987.6);
     
-    // 80% chance for a cell to be completely empty this cycle.
-    // This creates the sparse, random nature of individual drops.
     if (rand.x > 0.2) {
         Drop empty;
         empty.mask = 0.0;
@@ -47,51 +38,48 @@ Drop splashDrops(float2 uv, float time, float scale) {
         return empty;
     }
     
-    float2 p = (rand.yz - 0.5) * 0.8; 
-    float maxRadius = rand.x * 0.25 + 0.15; // Random size
+    float2 p = (rand.yz - 0.5) * 0.8;
+    float maxRadius = rand.x * 0.25 + 0.15;
     
-    // Anatomy of a splash lifecycle:
-    // 0.0   - 0.02 : Fast pop/impact
-    // 0.02  - 0.70 : Linger static on the glass as a bead
-    // 0.70  - 1.0  : Slowly evaporate / flatten / fade out
     float popIn = smoothstep(0.0, 0.02, t);
     float fadeOut = smoothstep(1.0, 0.7, t);
     float radius = maxRadius * popIn * fadeOut;
     
-    // Very fast impact ring
     float splashStart = smoothstep(0.0, 0.015, t) * smoothstep(0.04, 0.015, t);
-    float ringR = (t * 15.0) * maxRadius; // Expands outward quickly during first few frames
+    float ringR = (t * 15.0) * maxRadius;
     float splashRing = smoothstep(ringR, ringR - 0.03, length(st - p)) * smoothstep(ringR + 0.03, ringR - 0.03, length(st - p));
     
-    float splashMask = splashRing * splashStart * 0.5; // Subtle impact ring
+    float splashMask = splashRing * splashStart * 0.5;
     
     float2 diff = st - p;
     float d = length(diff);
-    
     float beadMask = smoothstep(radius, radius - 0.05, d);
-    
     float mask = max(beadMask, splashMask);
     
-    float2 nd = diff / (radius + 0.0001); 
-    if (dot(nd, nd) > 1.0) nd = normalize(nd); 
+    float2 nd = diff / (radius + 0.0001);
+    if (dot(nd, nd) > 1.0) nd = normalize(nd);
     
-    // As the drop evaporates (fadeOut), its dome flattens, reducing normal intensity
     float nZ = sqrt(max(1.0 - dot(nd, nd), 0.0));
-    nZ = mix(1.0, nZ, fadeOut); // Normal flattens as it fades
+    nZ = mix(1.0, nZ, fadeOut);
     
     Drop drop;
-    drop.normal = float3(-nd.x, -nd.y, nZ); 
+    drop.normal = float3(-nd.x, -nd.y, nZ);
     drop.mask = mask;
     
     return drop;
 }
 
-// Gentle sliding spring rain trickling down the window
-Drop dynamicDrops(float2 uv, float time, float scale) {
+// NEW: Added wind parameter to control physics
+Drop dynamicDrops(float2 uv, float time, float scale, float2 wind) {
     float2 UV = uv;
-    UV.y += time * 0.08; // Vastly slower fall
     
-    float2 grid = float2(scale, scale * 0.25); 
+    // --- PHYSICS INTEGRATION ---
+    // 1. Wind Shear: Slants the grid horizontally based on your X tilt
+    UV.x += UV.y * wind.x;
+    // 2. Gravity: Adjusts the fall speed based on your Y tilt
+    UV.y += time * max(0.02, 0.08 + wind.y);
+    
+    float2 grid = float2(scale, scale * 0.25);
     float2 id = floor(UV * grid);
     
     float colShift = hash21(float2(id.x, 0.0));
@@ -105,25 +93,25 @@ Drop dynamicDrops(float2 uv, float time, float scale) {
     
     float xWiggle = sin((UV.y - time) * 10.0) * 0.1 * rand.z;
     x += xWiggle;
-    x *= 0.7; 
+    x *= 0.7;
     
-    float ti = fract(time * 0.3 + rand.y); // Cycle reset timing
-    float y = st.y - ti; 
+    float ti = fract(time * 0.3 + rand.y);
+    float y = st.y - ti;
     
     float2 center = float2(x, y);
     float2 diff = st - center;
-    diff.y *= grid.x / grid.y; 
+    diff.y *= grid.x / grid.y;
     
     float d = length(diff);
-    float rMain = 0.09 + rand.z * 0.06; 
+    float rMain = 0.09 + rand.z * 0.06;
     
     float mainMask = smoothstep(rMain, rMain - 0.04, d);
     
     float trailD = abs(st.x - x);
-    float trailR = sqrt(max(0.0, st.y - y)) * 0.04; 
+    float trailR = sqrt(max(0.0, st.y - y)) * 0.04;
     float trailBounds = smoothstep(trailR, trailR - 0.02, trailD) * smoothstep(y, y + 0.3, st.y);
     
-    float2 trailLocal = float2(diff.x, fract(diff.y * 12.0) - 0.5); 
+    float2 trailLocal = float2(diff.x, fract(diff.y * 12.0) - 0.5);
     float trailDrops = smoothstep(0.05, 0.01, length(trailLocal)) * trailBounds;
     
     float mask = max(mainMask, trailDrops);
@@ -139,8 +127,7 @@ Drop dynamicDrops(float2 uv, float time, float scale) {
     float nZ = sqrt(max(1.0 - dot(nd, nd), 0.0));
     
     float cellFade = smoothstep(0.0, 0.1, st.y) * smoothstep(1.0, 0.8, st.y);
-    // Reduce opacity of sliders so splashes stand out more
-    mask *= cellFade * 0.6; 
+    mask *= cellFade * 0.6;
     
     Drop drop;
     drop.normal = float3(-nd.x, -nd.y, nZ);
@@ -155,24 +142,31 @@ Drop mixLayer(Drop base, Drop top) {
     return base;
 }
 
-[[ stitchable ]] half4 rainDistortion(float2 position, SwiftUI::Layer layer, float2 size, float time) {
+[[ stitchable ]] half4 rainDistortion(float2 position, SwiftUI::Layer layer, float2 size, float3 params) {
+    // Unpack our Swift parameters
+    float time = params.x;
+    float motionX = params.y;
+    float motionY = params.z;
+
     float2 uv = position / min(size.x, size.y);
+    
+    // Scale the motion data into a wind/gravity vector
+    float2 wind = float2(motionX * 0.6, motionY * 0.2);
     
     Drop drop;
     drop.mask = 0.0;
     drop.normal = float3(0,0,1);
     
-    // Layer 1. Occasional random splashes
+    // Layer 1 & 2: Splashes stay mostly static on the glass
     drop = mixLayer(drop, splashDrops(uv, time, 15.0));
-    // Layer 2. Additional offset random splashes
     drop = mixLayer(drop, splashDrops(uv * 1.3 + float2(0.1, 0.5), time * 0.9, 10.0));
-    // Layer 3. Slow trickling water trails (reduced opacity)
-    drop = mixLayer(drop, dynamicDrops(uv, time, 6.0));
-    // Layer 4. Slightly faster/thicker paths
-    drop = mixLayer(drop, dynamicDrops(uv * 1.62 - float2(0.2, 0.5), time * 1.2, 4.0));
     
-    float3 lightDir = normalize(float3(-0.8, 0.8, 1.0)); 
-    float3 viewDir = normalize(float3(0.0, 0.0, 1.0));  
+    // Layer 3 & 4: Trickling trails react to the tilt physics
+    drop = mixLayer(drop, dynamicDrops(uv, time, 6.0, wind));
+    drop = mixLayer(drop, dynamicDrops(uv * 1.62 - float2(0.2, 0.5), time * 1.2, 4.0, wind));
+    
+    float3 lightDir = normalize(float3(-0.8, 0.8, 1.0));
+    float3 viewDir = normalize(float3(0.0, 0.0, 1.0));
     
     float2 refractionOffset = drop.normal.xy * drop.mask;
     float2 refractedPos = position + refractionOffset * 20.0;
@@ -184,7 +178,7 @@ Drop mixLayer(Drop base, Drop top) {
         
         float3 H = normalize(lightDir + viewDir);
         float NdotH = max(dot(N, H), 0.0);
-        float specular = pow(NdotH, 60.0); 
+        float specular = pow(NdotH, 60.0);
         
         float NdotL = dot(N, lightDir);
         float3 volumeShadow = mix(float3(0.65, 0.75, 0.85), float3(1.0), smoothstep(-0.8, 0.6, NdotL));
