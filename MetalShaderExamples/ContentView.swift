@@ -3,14 +3,18 @@ import CoreMotion
 import Combine
 import AVFoundation
 
+import SwiftUI
+import AVFoundation
+
 enum WindowMode: String, CaseIterable {
     case frontCamera = "Front"
     case backCamera = "Back"
     case staticImage = "Static"
 }
 
+// 1. The top-level view now ONLY handles the Picker.
+// It does NOT observe the 60fps motion data, so it remains perfectly responsive.
 struct ContentView: View {
-    @StateObject private var motion = MotionManager()
     @State private var selectedMode: WindowMode = .frontCamera
     
     var body: some View {
@@ -32,16 +36,33 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 30)
+                .padding(.top, 60)
                 .colorScheme(.dark)
+                .zIndex(1) // Ensures it stays on top for hit-testing
                 
-                // --- The Isolated Parallax Window ---
-                ParallaxWindowView(motion: motion, selectedMode: selectedMode)
-                
-                Spacer() // Pushes the window up slightly
+                // --- The Isolated Physics Container ---
+                // We pass the selected mode down into the container
+                MotionContainerView(selectedMode: selectedMode)
             }
-            .padding(.top, 60)
+        }
+    }
+}
+
+// 2. This container traps all the 60fps updates inside itself
+struct MotionContainerView: View {
+    // The MotionManager is now owned HERE. Only this view and its children redraw.
+    @StateObject private var motion = MotionManager()
+    var selectedMode: WindowMode
+    
+    var body: some View {
+        ZStack {
+            VStack {
+                // The Parallax Window
+                ParallaxWindowView(motion: motion, selectedMode: selectedMode)
+                Spacer()
+            }
             
-            // --- NEW: Floating Calibration Button ---
+            // Floating Calibration Button
             VStack {
                 Spacer()
                 HStack {
@@ -65,9 +86,7 @@ struct ContentView: View {
     }
 }
 
-// --- NEW: Extracted Subview ---
-// Because only THIS view reads motion.x and motion.y,
-// SwiftUI knows to only redraw this specific block of code at 60fps.
+// 3. The physical window (Same as before)
 struct ParallaxWindowView: View {
     @ObservedObject var motion: MotionManager
     var selectedMode: WindowMode

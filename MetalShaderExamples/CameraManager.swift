@@ -120,9 +120,10 @@ struct CameraView: View {
             camera.start(position: position)
         }
         // If the user taps a different camera in the segmented control, swap it immediately
-        .onChange(of: position) { newPosition in
-            camera.switchCamera(to: newPosition)
-        }
+        .onChange(of: position, { oldValue, newValue in
+            camera.switchCamera(to: newValue)
+        })
+        
         .onDisappear {
             camera.stop()
         }
