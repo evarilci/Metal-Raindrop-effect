@@ -20,12 +20,13 @@ struct Drop {
     float mask;
 };
 
-Drop splashDrops(float2 uv, float time, float scale) {
+Drop splashDrops(float2 uv, float time, float scale, float2 wind) {
     float2 id = floor(uv * scale);
     float2 st = fract(uv * scale) - 0.5;
     
     float timeOffset = hash21(id) * 100.0;
-    float localTime = (time + timeOffset) * 0.15;
+    // TWEAK: Slower lifecycle for the splashes (changed from 0.15 to 0.08)
+    float localTime = (time + timeOffset) * 0.08;
     float cycle = floor(localTime);
     float t = fract(localTime);
     
@@ -38,9 +39,14 @@ Drop splashDrops(float2 uv, float time, float scale) {
         return empty;
     }
     
-    float2 p = (rand.yz - 0.5) * 0.8;
-    float maxRadius = rand.x * 0.25 + 0.15;
+    float2 p = (rand.yz - 0.5) * 0.4;
+    p.y -= 0.15;
     
+    p.x += t * wind.x * 0.8;
+    // TWEAK: Slower downward slide for the splashes
+    p.y += t * (0.15 + max(0.0, wind.y * 0.5));
+    
+    float maxRadius = rand.x * 0.25 + 0.15;
     float popIn = smoothstep(0.0, 0.02, t);
     float fadeOut = smoothstep(1.0, 0.7, t);
     float radius = maxRadius * popIn * fadeOut;
@@ -69,15 +75,12 @@ Drop splashDrops(float2 uv, float time, float scale) {
     return drop;
 }
 
-// NEW: Added wind parameter to control physics
 Drop dynamicDrops(float2 uv, float time, float scale, float2 wind) {
     float2 UV = uv;
     
-    // --- PHYSICS INTEGRATION ---
-    // 1. Wind Shear: Slants the grid horizontally based on your X tilt
     UV.x += UV.y * wind.x;
-    // 2. Gravity: Adjusts the fall speed based on your Y tilt
-    UV.y += time * max(0.02, 0.08 + wind.y);
+    // TWEAK: Vastly slower gravity pull for the trickling trails
+    UV.y += time * max(0.01, 0.03 + wind.y * 0.5);
     
     float2 grid = float2(scale, scale * 0.25);
     float2 id = floor(UV * grid);
@@ -90,12 +93,12 @@ Drop dynamicDrops(float2 uv, float time, float scale, float2 wind) {
     float2 st = fract(UV * grid) - float2(0.5, 0.0);
     
     float x = rand.x - 0.5;
-    
     float xWiggle = sin((UV.y - time) * 10.0) * 0.1 * rand.z;
     x += xWiggle;
     x *= 0.7;
     
-    float ti = fract(time * 0.3 + rand.y);
+    // TWEAK: Slower cycle resets so drops linger on screen longer
+    float ti = fract(time * 0.15 + rand.y);
     float y = st.y - ti;
     
     float2 center = float2(x, y);
@@ -143,25 +146,24 @@ Drop mixLayer(Drop base, Drop top) {
 }
 
 [[ stitchable ]] half4 rainDistortion(float2 position, SwiftUI::Layer layer, float2 size, float3 params) {
-    // Unpack our Swift parameters
     float time = params.x;
     float motionX = params.y;
     float motionY = params.z;
 
     float2 uv = position / min(size.x, size.y);
     
-    // Scale the motion data into a wind/gravity vector
+    uv.x -= motionX * 0.1;
+    uv.y -= motionY * 0.1;
+    
     float2 wind = float2(motionX * 0.6, motionY * 0.2);
     
     Drop drop;
     drop.mask = 0.0;
     drop.normal = float3(0,0,1);
     
-    // Layer 1 & 2: Splashes stay mostly static on the glass
-    drop = mixLayer(drop, splashDrops(uv, time, 15.0));
-    drop = mixLayer(drop, splashDrops(uv * 1.3 + float2(0.1, 0.5), time * 0.9, 10.0));
+    drop = mixLayer(drop, splashDrops(uv, time, 15.0, wind));
+    drop = mixLayer(drop, splashDrops(uv * 1.3 + float2(0.1, 0.5), time * 0.9, 10.0, wind));
     
-    // Layer 3 & 4: Trickling trails react to the tilt physics
     drop = mixLayer(drop, dynamicDrops(uv, time, 6.0, wind));
     drop = mixLayer(drop, dynamicDrops(uv * 1.62 - float2(0.2, 0.5), time * 1.2, 4.0, wind));
     
@@ -175,14 +177,12 @@ Drop mixLayer(Drop base, Drop top) {
     
     if (drop.mask > 0.0) {
         float3 N = drop.normal;
-        
         float3 H = normalize(lightDir + viewDir);
         float NdotH = max(dot(N, H), 0.0);
         float specular = pow(NdotH, 60.0);
         
         float NdotL = dot(N, lightDir);
         float3 volumeShadow = mix(float3(0.65, 0.75, 0.85), float3(1.0), smoothstep(-0.8, 0.6, NdotL));
-        
         float fresnel = pow(max(1.0 - dot(N, viewDir), 0.0), 4.0);
         
         bgColor.rgb *= half3(volumeShadow);
